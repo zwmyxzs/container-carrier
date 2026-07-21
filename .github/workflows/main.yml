@@ -11,22 +11,33 @@ on:
         options:
           - ''
           - 'buildkit'
+          - 'maven'
           - 'eclipse-temurin'
           - 'golang'
-          - 'maven'
-          - 'nginx'
           - 'node'
+          - 'nginx'
           - 'dotnet-sdk'
-          - 'plugin-dependency-check'
           - 'plugin-docker-buildx'
           - 'plugin-dockle'
           - 'plugin-extend-env'
           - 'plugin-kaniko'
           - 'plugin-node-pm'
           - 'plugin-sonarqube-scanner'
+          - 'plugin-dependency-check'
+          - 'plugin-trivy'
           - 'plugin-woodpecker-rsync'
           - 'plugin-drone-rsync'
-          - 'plugin-trivy'
+        default: ''
+      MULTI_ARCH:
+        description: 'Control what is copied if source-image refers to a multi-architecture image.'
+        type: choice
+        options:
+          - ''
+          - 'system'
+          - 'all'
+          - 'linux/amd64'
+          - 'linux/arm64'
+          - 'linux/amd64,linux/arm64'
         default: ''
 
 env:      
@@ -55,7 +66,7 @@ jobs:
           - name: eclipse-temurin
             repo: docker.io
             image: eclipse-temurin
-            multi-arch: all
+            multi-arch: 'linux/amd64,linux/arm64'
           - name: golang
             repo: docker.io
             image: golang
@@ -63,11 +74,11 @@ jobs:
           - name: node
             repo: docker.io
             image: node
-            multi-arch: all
+            multi-arch: 'linux/amd64,linux/arm64'
           - name: nginx
             repo: docker.io
             image: nginx
-            multi-arch: all
+            multi-arch: 'linux/amd64,linux/arm64'
           - name: dotnet-sdk
             repo: mcr.microsoft.com
             image: dotnet/sdk
@@ -124,7 +135,7 @@ jobs:
             dest-image: woodpecker-plugins/plugin-drone-rsync
             multi-arch: system
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         if: ${{ github.event.inputs.IMAGE_NAME == '' || github.event.inputs.IMAGE_NAME == matrix.name }}
 
       - name: Log in to Docker Hub
@@ -162,15 +173,25 @@ jobs:
         run: |
           install -D -m 755 ./skopeo "$HOME/.local/skopeo-bin/skopeo"
           echo "$HOME/.local/skopeo-bin" >> "$GITHUB_PATH"
-          echo 'unqualified-search-registries = ["docker.io"]' \
-            | sudo tee /etc/containers/registries.conf
+          echo 'unqualified-search-registries = ["docker.io"]' | sudo tee /etc/containers/registries.conf
 
       - name: 'Skopeo copy images to My Gitea'
         if: ${{ github.event.inputs.IMAGE_NAME == '' || github.event.inputs.IMAGE_NAME == matrix.name }}
         run: |
           skopeo --version
+          
+          # Check the value of MULTI_ARCH
+          ARCH_VAL="${{ github.event.inputs.MULTI_ARCH || matrix.multi-arch || 'system' }}"
+          
+          # Determine whether to append additional parameters
+          EXTRA_ARGS=""
+          if [ "$ARCH_VAL" != "all" ] && [ "$ARCH_VAL" != "system" ]; then
+            EXTRA_ARGS="--strip-removed-platforms --remove-list-signatures"
+          fi
+                    
           for tag in $(cat ./images/${{ matrix.name }}); do
-            skopeo copy --multi-arch ${{ matrix.multi-arch || 'system' }}  \
+            echo "${{ matrix.dest-image || matrix.image }}:$tag" / "$ARCH_VAL"
+            skopeo copy --multi-arch "$ARCH_VAL" $EXTRA_ARGS \
               docker://${{ matrix.repo }}/${{ matrix.image }}:$tag \
               docker://${{ secrets.GITEA_SERVER }}/${{ secrets.GITEA_REPOSITORY }}/${{ matrix.dest-image || matrix.image }}:$tag
           done

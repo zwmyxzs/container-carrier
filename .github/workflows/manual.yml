@@ -30,6 +30,9 @@ on:
         options:
           - 'all'
           - 'system'
+          - 'linux/amd64'
+          - 'linux/arm64'
+          - 'linux/amd64,linux/arm64'
         default: 'system'
 
 jobs:
@@ -41,7 +44,7 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
         with:
@@ -65,14 +68,26 @@ jobs:
 
       - name: Set up skopeo environment
         uses: balena-io-experimental/setup-skopeo-action@main
-        # uses: warjiang/setup-skopeo@v0.1.3
         with:
           version: latest
 
       - name: 'Skopeo copy images to Target Container '
         run: |
+          # Compatible with the latest Podman configuration
+          echo 'unqualified-search-registries = ["docker.io"]' | sudo tee /etc/containers/registries.conf
+          
           skopeo --version
-          skopeo copy --multi-arch ${{ github.event.inputs.MULTI_ARCH || 'system' }} \
+          
+          # Check the value of MULTI_ARCH and determine whether to append additional parameters
+          MULTI_ARCH_VAL="${{ github.event.inputs.MULTI_ARCH || 'system' }}"
+          
+          # Determine whether to append additional parameters
+          EXTRA_ARGS=""
+          if [ "$MULTI_ARCH_VAL" != "all" ] && [ "$MULTI_ARCH_VAL" != "system" ]; then
+            EXTRA_ARGS="--strip-removed-platforms --remove-list-signatures"
+          fi
+          
+          skopeo copy --multi-arch "$MULTI_ARCH_VAL" $EXTRA_ARGS \
             docker://${{ github.event.inputs.SOURCE_REGISTRY }}/${{ github.event.inputs.SOURCE_IMAGE_FULL_NAME }} \
             docker://${{ github.event.inputs.TARGET_REGISTRY || secrets.GITEA_SERVER }}/${{ github.event.inputs.TARGET_REPOSITORY || secrets.GITEA_REPOSITORY }}/${{ github.event.inputs.TARGET_IMAGE_NAME }}
 
