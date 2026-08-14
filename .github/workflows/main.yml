@@ -27,6 +27,7 @@ on:
           - 'plugin-trivy'
           - 'plugin-woodpecker-rsync'
           - 'plugin-drone-rsync'
+          - 'plugin-golangci-lint'
         default: ''
       MULTI_ARCH:
         description: 'Control what is copied if source-image refers to a multi-architecture image.'
@@ -133,6 +134,11 @@ jobs:
             repo: docker.io
             image: drillster/drone-rsync
             dest-image: woodpecker-plugins/plugin-drone-rsync
+            multi-arch: system
+          - name: plugin-golangci-lint
+            repo: docker.io
+            image: golangci/golangci-lint
+            dest-image: woodpecker-plugins/plugin-golangci-lint
             multi-arch: system
     steps:
       - uses: actions/checkout@v7
